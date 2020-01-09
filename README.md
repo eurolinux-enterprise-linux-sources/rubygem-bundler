@@ -1,3 +1,4 @@
-# ELS - Enterprise Linux/EuroLinux Sources 
+# ELS - Enterprise Linux/EuroLinux Sources - rubygem-bundler
+ 
 ## Usage:
   Checkout branch or tag.
