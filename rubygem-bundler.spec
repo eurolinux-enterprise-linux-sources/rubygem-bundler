@@ -5,7 +5,7 @@
 Summary: Library and utilities to manage a Ruby application's gem dependencies
 Name: rubygem-%{gem_name}
 Version: 1.3.1
-Release: 2%{?dist}
+Release: 3%{?dist}
 Group: Development/Languages
 License: MIT
 URL: http://gembundler.com
@@ -138,6 +138,9 @@ EOF` rspec spec/
 %doc %{gem_docdir}
 
 %changelog
+* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1.3.1-3
+- Mass rebuild 2013-12-27
+
 * Tue Jul 02 2013 Vít Ondruch <vondruch@redhat.com> - 1.3.1-2
 - Always include Patch100 in SRPM.
 
