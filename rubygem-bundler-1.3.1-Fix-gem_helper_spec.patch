@@ -1,0 +1,35 @@
+From 31fd2fdae5220d6c2525da503bff97289a09ffef Mon Sep 17 00:00:00 2001
+From: =?UTF-8?q?V=C3=ADt=20Ondruch?= <vondruch@redhat.com>
+Date: Thu, 7 Mar 2013 09:27:54 +0100
+Subject: [PATCH] Fix gem_helper_spec.
+
+Fixes "Bundler::GemHelper tasks gem management release releases even
+if tag already exists", otherwise the test case fails with:
+
+     RuntimeError:
+       There are files that need to be committed first.
+---
+ spec/bundler/gem_helper_spec.rb | 7 +++++--
+ 1 file changed, 5 insertions(+), 2 deletions(-)
+
+diff --git a/spec/bundler/gem_helper_spec.rb b/spec/bundler/gem_helper_spec.rb
+index 4fce534..134fc87 100644
+--- a/spec/bundler/gem_helper_spec.rb
++++ b/spec/bundler/gem_helper_spec.rb
+@@ -185,8 +185,11 @@ describe "Bundler::GemHelper tasks" do
+           `git init --bare`
+         }
+         Dir.chdir(@app) {
+-         `git commit -a -m "another commit"`
+-         `git tag -a -m \"Version 0.0.1\" v0.0.1`
++          `git init`
++          `git config user.email "you@example.com"`
++          `git config user.name "name"`
++          `git commit -a -m "another commit"`
++          `git tag -a -m \"Version 0.0.1\" v0.0.1`
+         }
+         @helper.release_gem
+       end
+-- 
+1.8.3.1
+

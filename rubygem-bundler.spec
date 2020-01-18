@@ -2,42 +2,29 @@
 
 %{!?enable_test: %global enable_test 0}
 
-# Macro for symlinking system RubyGems as a replacement for removed vendored libs
-%global symlink_vendored_libs \
-for dependency in \\\
-  net-http-persistent \\\
-  thor \
-do \
-  for fileordir in \\\
-    %{gem_dir}/gems/$dependency-*/lib/* \
-  do \
-    ln -s -f $fileordir -t %{gem_libdir}/bundler/vendor/ \
-  done \
-done
-
 Summary: Library and utilities to manage a Ruby application's gem dependencies
 Name: rubygem-%{gem_name}
-Version: 1.7.8
-Release: 3%{?dist}
+Version: 1.3.1
+Release: 2%{?dist}
 Group: Development/Languages
 License: MIT
 URL: http://gembundler.com
 Source0: http://rubygems.org/gems/%{gem_name}-%{version}.gem
 Patch1: bundler-add-support-for-binary-extensions-in-dedicated-folde.patch
+Patch100: rubygem-bundler-1.3.1-Fix-gem_helper_spec.patch
 Requires: ruby(release)
 Requires: ruby(rubygems)
-Requires: rubygem(thor) >= 0.19.0
+Requires: rubygem(thor)
 Requires: rubygem(net-http-persistent)
 BuildRequires: ruby(release)
 BuildRequires: rubygems-devel
 BuildRequires: ruby
 %if 0%{enable_test} > 0
 BuildRequires: ruby-devel
-BuildRequires: rubygem(rspec) >= 3.0
 BuildRequires: rubygem(thor)
 BuildRequires: rubygem(net-http-persistent)
-#BuildRequires: rubygem(psych)
-#BuildRequires: git snv sudo
+BuildRequires: rubygem(rspec)
+BuildRequires: rubygem(psych)
 BuildRequires: git sudo
 %endif
 BuildArch: noarch
@@ -67,10 +54,6 @@ popd
 %build
 
 %install
-# Remove bundled libraries
-rm -rf .%{gem_libdir}/bundler/vendor
-mkdir .%{gem_libdir}/bundler/vendor
-
 mkdir -p %{buildroot}%{gem_dir}
 cp -a .%{gem_dir}/* \
         %{buildroot}%{gem_dir}/
@@ -83,71 +66,59 @@ find %{buildroot}%{gem_instdir}/bin -type f | xargs chmod 755
 find %{buildroot}%{gem_instdir}/lib/bundler/templates/newgem/bin -type f | xargs chmod 755
 chmod 755 %{buildroot}%{gem_instdir}/lib/bundler/templates/Executable*
 
+# Remove bundled libraries
+rm -rf %{buildroot}/%{gem_libdir}/bundler/vendor
+
 # Man pages are used by Bundler internally, do not remove them!
 mkdir -p %{buildroot}%{_mandir}/man5
 cp -a %{buildroot}%{gem_libdir}/bundler/man/gemfile.5 %{buildroot}%{_mandir}/man5
 mkdir -p %{buildroot}%{_mandir}/man1
-for i in bundle bundle-config bundle-exec bundle-install bundle-package bundle-platform bundle-update
+for i in bundle bundle-config bundle-exec bundle-install bundle-package bundle-update 
 do
         cp -a %{buildroot}%{gem_libdir}/bundler/man/$i %{buildroot}%{_mandir}/man1/`echo $i.1`
 done
 
 # Test suite has to be disabled for official build, since it downloads various
 # gems, which are not in Fedora or they have different version etc.
-# Nevertheless, the test suite should run for local builds.
-# TODO: investigate failures
+# Nevertheless, the test suite passes for local builds.
 %if 0%{enable_test} > 0
 %check
 pushd .%{gem_instdir}
 
 # This test does not work, since ruby is configured with --with-ruby-version=''
-# https://github.com/bundler/bundler/issues/2365
-sed -i '/"fetches gems again after changing the version of Ruby"/,/end$/{s/^/#/}' spec/install/gems/platform_spec.rb
+# https://github.com/carlhuda/bundler/issues/2365
+sed -i '/"works after switching Rubies"/,/end$/{s/^/#/}' spec/install/gems/platform_spec.rb
+
+# Fixes not correctly initialized git repo.
+# https://github.com/carlhuda/bundler/pull/2367
+cat %{PATCH100} | patch -p1
 
 # Test suite needs to run in initialized git repository.
 # https://github.com/carlhuda/bundler/issues/2022
 git init
 
-# Test with system net-http-persistent and thor.
-for dependency in \
-  net-http-persistent \
-  thor
-do
-  for fileordir in \
-    %{gem_dir}/gems/$dependency-*/lib/*
-  do
-    ln -s -f $fileordir lib/bundler/vendor/$(basename "$fileordir")
-  done
-done
-
-rspec spec
+# There is necessary to specify load paths for several gems to pass the test
+# suite. Let's evaluate them by this nice Ruby snippet.
+RUBYOPT=-I`ruby <<EOF
+  specs = %w{json rdoc psych}.map {|g| Gem::Specification.find_by_name(g)}
+  specs.map! do |s|
+    paths = [s.gem_dir]
+    paths << s.ext_dir unless s.extensions.empty?
+    paths.map {|p| File.join p, s.require_paths.first}
+  end
+  puts specs.join(':')
+EOF` rspec spec/
 
 %endif
-
-%post
-# Create symlinks to system RubyGems as a replacement for vendored libs
-# See rhbz#1163039
-%symlink_vendored_libs
-
-%triggerpostun -- rubygem-thor, rubygem-net-http-persistent
-# We need to recreate the symlinks after the old package of vendored lib
-# has been removed, not before
-%symlink_vendored_libs
 
 %files
 %dir %{gem_instdir}
 %exclude %{gem_instdir}/.*
 %exclude %{gem_instdir}/man
 %{gem_libdir}
-%ghost %attr(644, root, root) %{gem_libdir}/bundler/vendor/net
-%ghost %attr(644, root, root) %{gem_libdir}/bundler/vendor/thor
-%ghost %attr(644, root, root) %{gem_libdir}/bundler/vendor/thor.rb
-%exclude %{gem_libdir}/bundler/ssl_certs/.document
-%exclude %{gem_libdir}/bundler/ssl_certs/*.pem
 %doc %{gem_instdir}/LICENSE.md
 %{gem_instdir}/.travis.yml
 %{_bindir}/bundle
-%{_bindir}/bundler
 %{gem_instdir}/bin
 %exclude %{gem_cache}
 %{gem_spec}
@@ -159,27 +130,14 @@ rspec spec
 %doc %{gem_instdir}/ISSUES.md
 %doc %{gem_instdir}/README.md
 %doc %{gem_instdir}/UPGRADING.md
+%doc %{gem_instdir}/CONTRIBUTE.md
 %doc %{gem_instdir}/CONTRIBUTING.md
-%doc %{gem_instdir}/DEVELOPMENT.md
 %{gem_instdir}/Rakefile
 %{gem_instdir}/spec
 %{gem_instdir}/%{gem_name}.gemspec
 %doc %{gem_docdir}
 
 %changelog
-* Thu Apr 09 2015 Vít Ondruch <vondruch@redhat.com> - 1.7.8-3
-- Enforce higher Thor version, which is required by Bundler.
-  Related: rhbz#1194243
-
-* Tue Apr 07 2015 <vondruch@redhat.com> - 1.7.8-2
-- Update to Bundler 1.7.8.
-  Resolves: rhbz#1194243
-- Use symlinks for vendored libraries.
-  Resolves: rhbz#1163076
-
-* Fri Dec 27 2013 Daniel Mach <dmach@redhat.com> - 1.3.1-3
-- Mass rebuild 2013-12-27
-
 * Tue Jul 02 2013 Vít Ondruch <vondruch@redhat.com> - 1.3.1-2
 - Always include Patch100 in SRPM.
 
